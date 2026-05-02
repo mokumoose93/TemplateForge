@@ -55,6 +55,35 @@ const TemplateDefinition& TemplateManager::define(
             entry.is_dir  = false;
             entry.content = content;
         }
+        for (const auto& existing : tpl.entries) {
+            if (existing.path == entry.path) {
+                if (existing.is_dir != entry.is_dir)
+                    throw std::invalid_argument(
+                        "define: path '" + entry.path +
+                        "' cannot be both a file and a directory");
+                break;
+            }
+            // Existing file entry is used as a directory by the new path
+            if (!existing.is_dir &&
+                entry.path.size() > existing.path.size() + 1 &&
+                entry.path.substr(0, existing.path.size()) == existing.path &&
+                entry.path[existing.path.size()] == '/') {
+                throw std::invalid_argument(
+                    "define: '" + existing.path +
+                    "' is already defined as a file but '" +
+                    entry.path + "' treats it as a directory");
+            }
+            // New file entry is used as a directory by an existing path
+            if (!entry.is_dir &&
+                existing.path.size() > entry.path.size() + 1 &&
+                existing.path.substr(0, entry.path.size()) == entry.path &&
+                existing.path[entry.path.size()] == '/') {
+                throw std::invalid_argument(
+                    "define: '" + entry.path +
+                    "' is defined as a file but '" +
+                    existing.path + "' treats it as a directory");
+            }
+        }
         tpl.entries.push_back(std::move(entry));
     }
 
