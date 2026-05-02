@@ -1,9 +1,9 @@
-CXX      := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -Iinclude
-TARGET   := templateforge
+CC      := gcc
+CFLAGS  := -std=gnu11 -Wall -Wextra -Iinclude
+TARGET  := templateforge
 
-SRCS := $(wildcard src/*.cpp)
-OBJS := $(patsubst src/%.cpp,build/%.o,$(SRCS))
+SRCS := $(wildcard src/*.c)
+OBJS := $(patsubst src/%.c,build/%.o,$(SRCS))
 
 .PHONY: all clean run
 
@@ -16,10 +16,10 @@ build_dir:
 	mkdir -p build
 
 $(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^
 
-build/%.o: src/%.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+build/%.o: src/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 run: all
 	./$(TARGET)

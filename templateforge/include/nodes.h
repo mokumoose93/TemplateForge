@@ -1,99 +1,63 @@
 #pragma once
-#include <string>
-#include <map>
-#include <memory>
-#include <vector>
+#include <stddef.h>
 
-// ---------------------------------------------------------------------------
-// Permission bits  (Unix-style rwx stored as an int bitmask)
-// ---------------------------------------------------------------------------
-namespace Perm {
-    constexpr int NONE    = 0;
-    constexpr int EXECUTE = 1;
-    constexpr int WRITE   = 2;
-    constexpr int READ    = 4;
-    constexpr int RX      = READ | EXECUTE;   // 5
-    constexpr int RW      = READ | WRITE;     // 6
-    constexpr int RWX     = READ | WRITE | EXECUTE; // 7
-}
+/* Permission bits (replaces Perm namespace) */
+#define PERM_NONE    0
+#define PERM_EXECUTE 1
+#define PERM_WRITE   2
+#define PERM_READ    4
+#define PERM_RX      5
+#define PERM_RW      6
+#define PERM_RWX     7
 
-// ---------------------------------------------------------------------------
-// AccessMetadata  — attached to every node
-// ---------------------------------------------------------------------------
-struct AccessMetadata {
-    std::string owner       {"user"};
-    std::string group       {"users"};
-    int         owner_perms {Perm::RWX};
-    int         group_perms {Perm::RX};
-    int         other_perms {Perm::RX};
+typedef struct {
+    char owner[64];
+    char group[64];
+    int  owner_perms;
+    int  group_perms;
+    int  other_perms;
+} AccessMetadata;
 
-    std::string permission_string() const; // e.g. "rwxr-xr-x"
-    std::string octal_string()      const; // e.g. "755"
+void access_perm_string (const AccessMetadata* a, char out[10]);
+void access_octal_string(const AccessMetadata* a, char out[4]);
+int  access_from_octal  (const char* s, int* op, int* gp, int* xp);
 
-    // Parse "755" -> (owner, group, other) bits.  Returns false on bad input.
-    static bool from_octal(const std::string& s, int& op, int& gp, int& xp);
+/* Node type tag — replaces the C++ class hierarchy */
+typedef enum { NT_FILE, NT_DIR, NT_SYMLINK } NodeType;
+
+/* Forward declaration so NodeChild can reference Node */
+typedef struct Node Node;
+
+typedef struct {
+    char* key;   /* owned copy of child name, kept for sorted-map semantics */
+    Node* node;  /* owned */
+} NodeChild;
+
+struct Node {
+    char*          name;    /* owned */
+    NodeType       type;
+    AccessMetadata access;
+    Node*          parent;  /* NON-owning back-pointer */
+    union {
+        struct { char* content;                                    } file;
+        struct { NodeChild* entries; int count; int cap;           } dir;
+        struct { char* target;                                     } symlink;
+    };
 };
 
-// ---------------------------------------------------------------------------
-// Node  — abstract base for every tree element
-// ---------------------------------------------------------------------------
-enum class NodeType { FILE, DIRECTORY, SYMLINK };
+/* Creation — each returns a heap-allocated Node (caller owns via the tree) */
+Node* node_new_file   (const char* name, const char* content, const char* owner);
+Node* node_new_dir    (const char* name, const char* owner);
+Node* node_new_symlink(const char* name, const char* target,  const char* owner);
+Node* node_deep_copy  (const Node* src);
+void  node_free       (Node* n);   /* recursive for dirs */
+char  node_type_label (const Node* n);
 
-class DirectoryNode; // forward declaration
-
-class Node : public std::enable_shared_from_this<Node> {
-public:
-    std::string             name;
-    NodeType                type;
-    AccessMetadata          access;
-    std::weak_ptr<Node>     parent; // weak to avoid reference cycles
-
-    Node(const std::string& name, NodeType type, const std::string& owner = "user");
-    virtual ~Node() = default;
-
-    bool is_file()    const { return type == NodeType::FILE; }
-    bool is_dir()     const { return type == NodeType::DIRECTORY; }
-    bool is_symlink() const { return type == NodeType::SYMLINK; }
-    char type_label() const;
-};
-
-// ---------------------------------------------------------------------------
-// FileNode  — leaf node holding text content
-// ---------------------------------------------------------------------------
-class FileNode : public Node {
-public:
-    std::string content;
-    FileNode(const std::string& name,
-             const std::string& content = "",
-             const std::string& owner   = "user");
-};
-
-// ---------------------------------------------------------------------------
-// DirectoryNode  — internal node containing named children
-// ---------------------------------------------------------------------------
-class DirectoryNode : public Node {
-public:
-    std::map<std::string, std::shared_ptr<Node>> children; // sorted by name
-
-    explicit DirectoryNode(const std::string& name,
-                           const std::string& owner = "user");
-
-    void                    add_child(std::shared_ptr<Node> node);
-    std::shared_ptr<Node>   remove_child(const std::string& name);
-    std::shared_ptr<Node>   get_child(const std::string& name) const;
-    bool                    has_child(const std::string& name)  const;
-
-    // Directories first (alpha), then files (alpha)
-    std::vector<std::shared_ptr<Node>> sorted_children() const;
-};
-
-// ---------------------------------------------------------------------------
-// SymlinkNode  — a node whose target_path points elsewhere in the tree
-// ---------------------------------------------------------------------------
-class SymlinkNode : public Node {
-public:
-    std::string target_path;
-    SymlinkNode(const std::string& name,
-                const std::string& target_path,
-                const std::string& owner = "user");
-};
+/* Directory child operations */
+void  dir_add_child    (Node* dir, Node* child);
+Node* dir_remove_child (Node* dir, const char* name); /* caller takes ownership */
+Node* dir_get_child    (const Node* dir, const char* name);
+int   dir_has_child    (const Node* dir, const char* name);
+/* Returns heap array of non-owning Node* (dirs first, then files, both alpha).
+   *count_out set to element count.  Caller must free() the array, not the nodes. */
+Node** dir_sorted_children(const Node* dir, int* count_out);

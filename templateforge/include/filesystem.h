@@ -1,74 +1,50 @@
 #pragma once
 #include "nodes.h"
-#include <string>
-#include <vector>
-#include <stdexcept>
 
-// ---------------------------------------------------------------------------
-// FileSystemError  — thrown by all FileSystemModel operations
-// ---------------------------------------------------------------------------
-class FileSystemError : public std::runtime_error {
-public:
-    explicit FileSystemError(const std::string& msg) : std::runtime_error(msg) {}
-};
+/* In-memory filesystem tree.
+   Replaces the C++ FileSystemModel class. */
+typedef struct {
+    Node* root;
+    Node* cwd;          /* non-owning pointer into the tree */
+    char  current_user[64];
+} FSModel;
 
-// ---------------------------------------------------------------------------
-// FileSystemModel  — the in-memory tree
-// ---------------------------------------------------------------------------
-class FileSystemModel {
-public:
-    explicit FileSystemModel(const std::string& initial_user = "user");
+void    fs_init(FSModel* fs, const char* initial_user);
+void    fs_free(FSModel* fs);
 
-    // ----- Navigation --------------------------------------------------
-    std::string pwd()  const;
-    void        cd(const std::string& path);
-    std::vector<std::shared_ptr<Node>> ls(const std::string& path = "") const;
+/* Returns heap-allocated string.  Caller must free(). */
+char*   fs_pwd(const FSModel* fs);
+int     fs_cd (FSModel* fs, const char* path, char* errbuf, int errsz);
 
-    // ----- Queries -----------------------------------------------------
-    std::shared_ptr<Node> get_node(const std::string& path,
-                                   bool follow_symlinks = true) const;
+/* Returns heap-allocated array of non-owning Node*.  Caller must free() the array.
+   *count is set on success; on error returns NULL and writes to errbuf. */
+Node**  fs_ls(const FSModel* fs, const char* path, int* count,
+              char* errbuf, int errsz);
 
-    // ----- Structural operations (may throw FileSystemError) -----------
-    void mkdir(const std::string& path);
-    void touch(const std::string& path, const std::string& content = "");
-    void rm   (const std::string& path, bool recursive = false);
-    void mv   (const std::string& src,  const std::string& dst);
-    void cp   (const std::string& src,  const std::string& dst);
-    void ln   (const std::string& target, const std::string& link_path);
+/* Returns the node at path; NULL if not found.
+   follow_symlinks: 1 = dereference symlinks, 0 = return the link itself. */
+Node*   fs_get_node(const FSModel* fs, const char* path, int follow_symlinks);
 
-    // ----- File I/O ----------------------------------------------------
-    std::string cat        (const std::string& path) const;
-    void        write_file (const std::string& path, const std::string& content);
+int     fs_mkdir     (FSModel* fs, const char* path,
+                      char* errbuf, int errsz);
+int     fs_touch     (FSModel* fs, const char* path, const char* content,
+                      char* errbuf, int errsz);
+int     fs_rm        (FSModel* fs, const char* path, int recursive,
+                      char* errbuf, int errsz);
+int     fs_mv        (FSModel* fs, const char* src,  const char* dst,
+                      char* errbuf, int errsz);
+int     fs_cp        (FSModel* fs, const char* src,  const char* dst,
+                      char* errbuf, int errsz);
+int     fs_ln        (FSModel* fs, const char* target, const char* link_path,
+                      char* errbuf, int errsz);
 
-    // ----- Access control ----------------------------------------------
-    void chmod(const std::string& path, const std::string& octal);
-    void chown(const std::string& path, const std::string& new_owner);
+/* Returns heap-allocated file content.  Caller must free(). NULL on error. */
+char*   fs_cat       (const FSModel* fs, const char* path,
+                      char* errbuf, int errsz);
+int     fs_write_file(FSModel* fs, const char* path, const char* content,
+                      char* errbuf, int errsz);
 
-    // ----- Public state ------------------------------------------------
-    std::string                    current_user;
-    std::shared_ptr<DirectoryNode> root;
-    std::shared_ptr<DirectoryNode> cwd;
-
-private:
-    // Path utilities
-    std::vector<std::string> split_path(const std::string& path) const;
-    std::vector<std::string> resolve_path(const std::string& path) const;
-    std::shared_ptr<Node>    node_at_segments(const std::vector<std::string>& segs,
-                                              bool follow_symlinks = true) const;
-    std::shared_ptr<Node>    resolve_symlink(const std::shared_ptr<Node>& link,
-                                             int depth = 0) const;
-
-    // Returns (parent_dir, child_name) for a path
-    std::pair<std::shared_ptr<DirectoryNode>, std::string>
-        parent_and_name(const std::string& path) const;
-
-    // Permission helpers
-    bool check_permission(const std::shared_ptr<Node>& node, int required) const;
-    void require_permission(const std::shared_ptr<Node>& node,
-                            int required, const std::string& verb) const;
-
-    // Deep-copy a node subtree (used by cp)
-    std::shared_ptr<Node> deep_copy(const std::shared_ptr<Node>& node) const;
-
-    static constexpr int SYMLINK_LIMIT = 40;
-};
+int     fs_chmod(FSModel* fs, const char* path, const char* octal,
+                 char* errbuf, int errsz);
+int     fs_chown(FSModel* fs, const char* path, const char* new_owner,
+                 char* errbuf, int errsz);

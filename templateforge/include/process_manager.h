@@ -3,76 +3,67 @@
 #include "mutex_sim.h"
 #include "thread_scheduler.h"
 #include "signal_handler.h"
-#include <string>
-#include <map>
-#include <vector>
-#include <optional>
-#include <memory>
 
-// ---------------------------------------------------------------------------
-// Process state
-// ---------------------------------------------------------------------------
-enum class ProcessState { RUNNING, SLEEPING, STOPPED, ZOMBIE, TERMINATED };
-std::string process_state_str(ProcessState s);
+#define MAX_PROCS    256
+#define MAX_PIPES     64
+#define MAX_MUTEXES   64
+#define MAX_CHILDREN  64
 
-// ---------------------------------------------------------------------------
-// Process — a simulated OS process
-// ---------------------------------------------------------------------------
-struct Process {
+typedef enum { PS_RUNNING, PS_SLEEPING, PS_STOPPED, PS_ZOMBIE, PS_TERMINATED } ProcessState;
+const char* process_state_str(ProcessState s);
+
+/* Replaces C++ Process struct. */
+typedef struct {
     int          pid;
-    std::string  name;
-    ProcessState state       {ProcessState::RUNNING};
-    int          parent_pid  {-1};
-    std::vector<int> children;
-    int          exit_code   {0};
+    char         name[64];
+    ProcessState state;
+    int          parent_pid;
+    int          children[MAX_CHILDREN];
+    int          n_children;
+    int          exit_code;
+} Process;
 
-    std::string status_line() const;
-};
+/* Writes "PID  PPID  STATE  NAME" line into out. */
+void process_status_line(const Process* p, char* out, int outsz);
 
-// ---------------------------------------------------------------------------
-// ProcessManager — central authority for processes, pipes, mutexes
-// ---------------------------------------------------------------------------
-class ProcessManager {
-public:
-    ProcessManager();
+/* Replaces C++ ProcessManager — aggregates all OS-sim subsystems. */
+typedef struct {
+    Process   procs[MAX_PROCS];
+    int       n_procs;
+    int       next_pid;
 
-    // ----- Process lifecycle -------------------------------------------
-    int  spawn(const std::string& name, int parent_pid = -1);
-    void terminate(int pid);                          // sends SIGTERM
-    std::optional<Process*> get_process(int pid);
-    std::vector<Process>    list_processes()  const;
+    Pipe      pipes[MAX_PIPES];
+    int       n_pipes;
+    int       next_pipe;
 
-    // ----- Signal delivery ---------------------------------------------
-    std::string send_signal(int pid, const std::string& signal_str);
+    MutexSim  mutexes[MAX_MUTEXES];
+    int       n_mutexes;
+    int       next_mutex;
 
-    // ----- Pipes -------------------------------------------------------
-    int  create_pipe();
-    Pipe& get_pipe(int pipe_id);
-    void pipe_write(int pipe_id, const std::string& data);
-    std::optional<std::string> pipe_read(int pipe_id);
-    std::vector<Pipe*> list_pipes();
+    Scheduler sched;
+    SignalReg signals;
+} ProcManager;
 
-    // ----- Mutexes -----------------------------------------------------
-    int  create_mutex(const std::string& name);
-    std::pair<bool,std::string> mutex_acquire(const std::string& name_or_id, int tid);
-    std::pair<bool,std::string> mutex_release(const std::string& name_or_id, int tid);
-    std::vector<MutexSim*> list_mutexes();
+void     pm_init(ProcManager* pm);
+void     pm_free(ProcManager* pm);
 
-    // ----- Scheduler (public for direct thread commands) ---------------
-    Scheduler scheduler;
+/* Process lifecycle */
+int      pm_spawn      (ProcManager* pm, const char* name, int parent_pid,
+                        char* eb, int esz);
+int      pm_terminate  (ProcManager* pm, int pid, char* eb, int esz);
+Process* pm_get_process(ProcManager* pm, int pid);
 
-private:
-    std::map<int, Process>             processes_;
-    int                                next_pid_   {2};
+/* Returns heap string; caller frees. */
+char*    pm_send_signal(ProcManager* pm, int pid, const char* sig_str,
+                        char* eb, int esz);
 
-    std::map<int, Pipe>                pipes_;
-    int                                next_pipe_  {1};
+/* Pipes */
+int      pm_create_pipe(ProcManager* pm, char* eb, int esz);
+Pipe*    pm_get_pipe   (ProcManager* pm, int pipe_id, char* eb, int esz);
+void     pm_pipe_write (ProcManager* pm, int pipe_id, const char* data, char* eb, int esz);
+/* Returns heap string or NULL; caller frees. */
+char*    pm_pipe_read  (ProcManager* pm, int pipe_id, char* eb, int esz);
 
-    std::map<std::string, MutexSim>    mutexes_;
-    int                                next_mutex_ {1};
-
-    SignalRegistry                     signals_;
-
-    MutexSim& find_mutex(const std::string& name_or_id);
-    void      do_terminate(int pid, int exit_code = 0);
-};
+/* Mutexes */
+int       pm_create_mutex (ProcManager* pm, const char* name, char* eb, int esz);
+MutexSim* pm_find_mutex   (ProcManager* pm, const char* name_or_id, char* eb, int esz);

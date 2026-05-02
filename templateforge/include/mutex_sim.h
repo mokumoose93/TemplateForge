@@ -1,27 +1,18 @@
 #pragma once
-#include <string>
-#include <optional>
 
-// ---------------------------------------------------------------------------
-// MutexSim — simulated mutual-exclusion lock for SimThreads
-// ---------------------------------------------------------------------------
-class MutexSim {
-public:
-    MutexSim(int id, const std::string& name);
+/* Replaces C++ MutexSim. */
+typedef struct {
+    int  id;
+    char name[64];
+    int  locked;
+    int  owner_tid;  /* -1 when unlocked */
+} MutexSim;
 
-    // Returns {true, msg} on success or {false, msg} if already locked.
-    std::pair<bool, std::string> acquire(int tid);
-    std::pair<bool, std::string> release(int tid);
+void mutex_init(MutexSim* m, int id, const char* name);
 
-    bool                    is_locked()  const { return locked_; }
-    std::optional<int>      owner_tid()  const;
-    int                     id()         const { return id_; }
-    const std::string&      name()       const { return name_; }
-    std::string             status_str() const;
+/* Both return 1=success/0=failure and write a message into msg (size msgsz). */
+int  mutex_acquire(MutexSim* m, int tid, char* msg, int msgsz);
+int  mutex_release(MutexSim* m, int tid, char* msg, int msgsz);
 
-private:
-    int         id_;
-    std::string name_;
-    bool        locked_ {false};
-    int         owner_  {-1};
-};
+/* Writes status string into out (size outsz). */
+void mutex_status_str(const MutexSim* m, char* out, int outsz);

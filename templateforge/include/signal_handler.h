@@ -1,48 +1,42 @@
 #pragma once
-#include <string>
-#include <map>
-#include <functional>
-#include <vector>
-#include <set>
 
-// ---------------------------------------------------------------------------
-// Signal definitions
-// ---------------------------------------------------------------------------
-enum class Signal {
-    SIGTERM,
-    SIGKILL,
-    SIGINT,
-    SIGHUP,
-    SIGUSR1,
-    SIGUSR2,
-    SIGCHLD,
-    SIGSTOP,
-    SIGCONT
-};
+#define MAX_SIGNAL_HANDLERS 256
+#define MAX_SIGNAL_LOG      512
 
-Signal      signal_from_str(const std::string& s);   // throws std::invalid_argument
-std::string signal_to_str(Signal s);
+typedef enum {
+    SIG_TERM, SIG_KILL, SIG_INT, SIG_HUP,
+    SIG_USR1, SIG_USR2, SIG_CHLD, SIG_STOP, SIG_CONT
+} Signal;
 
-std::string default_action_for(Signal s);             // "terminate"|"stop"|"ignore"|"continue"
-bool        is_uncatchable(Signal s);                 // SIGKILL, SIGSTOP
+/* Converts "SIGTERM" / "TERM" (case-insensitive) -> enum.
+   Returns -1 on unknown signal. */
+int         signal_from_str   (const char* s);
+const char* signal_to_str     (Signal s);
+const char* default_action_for(Signal s);
+int         is_uncatchable    (Signal s);
 
-// ---------------------------------------------------------------------------
-// SignalRegistry — maps (pid, signal) to custom handlers
-// ---------------------------------------------------------------------------
-using SignalHandler = std::function<std::string(int pid, Signal sig)>;
+/* Handler callback: returns heap-allocated message string, caller frees. */
+typedef char* (*SigHandlerFn)(int pid, Signal sig, void* ctx);
 
-class SignalRegistry {
-public:
-    // Register a custom handler. Returns false for uncatchable signals.
-    bool register_handler(int pid, Signal sig, SignalHandler handler);
-    void unregister_handler(int pid, Signal sig);
+typedef struct {
+    int          pid;
+    Signal       sig;
+    SigHandlerFn fn;
+    void*        ctx;   /* non-owning */
+} HandlerEntry;
 
-    // Dispatch signal to pid, running custom handler or default action.
-    std::string dispatch(int pid, Signal sig);
+/* Replaces C++ SignalRegistry. */
+typedef struct {
+    HandlerEntry entries[MAX_SIGNAL_HANDLERS];
+    int          count;
+    char*        log[MAX_SIGNAL_LOG]; /* owned strings */
+    int          n_log;
+} SignalReg;
 
-    const std::vector<std::string>& log() const { return log_; }
-
-private:
-    std::map<std::pair<int,Signal>, SignalHandler> handlers_;
-    std::vector<std::string>                        log_;
-};
+void  sreg_init      (SignalReg* r);
+void  sreg_free      (SignalReg* r);
+/* Returns 0 if signal is uncatchable (not registered). */
+int   sreg_register  (SignalReg* r, int pid, Signal sig, SigHandlerFn fn, void* ctx);
+void  sreg_unregister(SignalReg* r, int pid, Signal sig);
+/* Returns heap-allocated result string; caller frees. */
+char* sreg_dispatch  (SignalReg* r, int pid, Signal sig);

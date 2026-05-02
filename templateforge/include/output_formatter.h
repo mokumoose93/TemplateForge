@@ -1,54 +1,35 @@
 #pragma once
 #include "nodes.h"
 #include "process_manager.h"
-#include <string>
-#include <vector>
-#include <map>
 
-// ---------------------------------------------------------------------------
-// OutputFormatter — the View in the MVC design
-// Converts model data into human-readable strings.
-// ---------------------------------------------------------------------------
-class OutputFormatter {
-public:
-    explicit OutputFormatter(bool use_color = true);
+/* Replaces C++ OutputFormatter class.
+   All format_* functions return heap-allocated strings; caller must free(). */
+typedef struct {
+    int use_color;
+} OutputFmt;
 
-    // Navigation
-    std::string format_pwd(const std::string& path) const;
-    std::string format_prompt(const std::string& cwd, const std::string& user) const;
+void  fmt_init(OutputFmt* f, int use_color);
 
-    // Filesystem
-    std::string format_ls(const std::vector<std::shared_ptr<Node>>& nodes,
-                          bool long_format = false) const;
-    std::string format_tree(const std::shared_ptr<Node>& node,
-                            const std::string& prefix  = "",
-                            bool               is_last = true) const;
+/* Prompt / navigation */
+char* fmt_pwd   (const OutputFmt* f, const char* path);
+char* fmt_prompt(const OutputFmt* f, const char* cwd, const char* user);
 
-    // Variables
-    std::string format_vars(const std::map<std::string,std::string>& vars) const;
+/* Filesystem */
+char* fmt_ls  (const OutputFmt* f, Node** nodes, int count, int long_fmt);
+char* fmt_tree(const OutputFmt* f, const Node* node,
+               const char* prefix, int is_last);
 
-    // Processes / threads / pipes / mutexes
-    std::string format_processes(const std::vector<Process>& procs)   const;
-    std::string format_threads  (const std::vector<SimThread>& threads) const;
-    std::string format_pipes    (const std::vector<Pipe*>& pipes)      const;
-    std::string format_mutexes  (const std::vector<MutexSim*>& mtxs)  const;
+/* Variables (entries are name/value pairs; n is the count) */
+char* fmt_vars(const OutputFmt* f,
+               const char** names, const char** values, int n);
 
-    // Feedback
-    std::string ok (const std::string& msg) const;   // green
-    std::string err(const std::string& msg) const;   // red
-    std::string inf(const std::string& msg) const;   // yellow
+/* OS simulation */
+char* fmt_processes(const OutputFmt* f, const Process* procs,  int n);
+char* fmt_threads  (const OutputFmt* f, const SimThread* threads, int n);
+char* fmt_pipes    (const OutputFmt* f, const Pipe* pipes,     int n);
+char* fmt_mutexes  (const OutputFmt* f, const MutexSim* mtxs,  int n);
 
-    bool use_color;
-
-private:
-    std::string col(const std::string& text, const std::string& code) const;
-
-    // ANSI codes
-    static constexpr const char* RESET   = "\033[0m";
-    static constexpr const char* BOLD    = "\033[1m";
-    static constexpr const char* RED     = "\033[31m";
-    static constexpr const char* GREEN   = "\033[32m";
-    static constexpr const char* YELLOW  = "\033[33m";
-    static constexpr const char* BLUE    = "\033[34m";
-    static constexpr const char* CYAN    = "\033[36m";
-};
+/* Feedback — all return heap strings; caller frees */
+char* fmt_ok (const OutputFmt* f, const char* msg);
+char* fmt_err(const OutputFmt* f, const char* msg);
+char* fmt_inf(const OutputFmt* f, const char* msg);

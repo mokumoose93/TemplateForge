@@ -4,32 +4,25 @@
 #include "variable_manager.h"
 #include "process_manager.h"
 #include "output_formatter.h"
-#include <string>
-#include <vector>
 
-// ---------------------------------------------------------------------------
-// AppContext — bundles all subsystems for the dispatcher
-// ---------------------------------------------------------------------------
-struct AppContext {
-    FileSystemModel&  fs;
-    TemplateManager&  tm;
-    VariableManager&  vm;
-    ProcessManager&   pm;
-    OutputFormatter&  view;
-};
+/* Bundles all subsystems — replaces C++ AppContext. */
+typedef struct {
+    FSModel*    fs;
+    TplManager* tm;
+    VarManager* vm;
+    ProcManager* pm;
+    OutputFmt*  view;
+} AppContext;
 
-// ---------------------------------------------------------------------------
-// parse()     — tokenise a raw input line (respects single/double quotes)
-// dispatch()  — route tokens to the correct subsystem, return output string
-//
-// Special return values from dispatch():
-//   "::EXIT"        — REPL should terminate
-//   "::CLEAR"       — REPL should clear screen
-//   "::DEFINE:<n>"  — REPL should enter interactive define mode for template <n>
-// ---------------------------------------------------------------------------
-std::vector<std::string> parse(const std::string& raw);
+/* Tokenise a raw input line respecting single/double quotes.
+   Fills tokens[0..max-1]; returns token count. */
+int  cmd_parse(const char* raw, char** tokens, int max);
+void cmd_free_tokens(char** tokens, int count);
 
-std::string dispatch(const std::vector<std::string>& tokens, AppContext& ctx);
+/* Route tokens to the correct subsystem.
+   Returns heap-allocated result string; caller must free().
+   Special values: "::EXIT", "::CLEAR", "::DEFINE:<name>" */
+char* cmd_dispatch(char** tokens, int count, AppContext* ctx);
 
-// Returns the built-in help text (optionally for a specific topic)
-std::string help_text(const std::string& topic = "");
+/* Returns heap-allocated help text; caller frees. */
+char* cmd_help_text(const char* topic);

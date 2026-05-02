@@ -1,54 +1,36 @@
 #pragma once
-#include <string>
-#include <map>
-#include <vector>
-#include <optional>
 
-// ---------------------------------------------------------------------------
-// Thread state
-// ---------------------------------------------------------------------------
-enum class ThreadState {
-    READY,
-    RUNNING,
-    BLOCKED,
-    TERMINATED
-};
+#define MAX_THREADS 256
 
-std::string thread_state_str(ThreadState s);
+typedef enum { TS_READY, TS_RUNNING, TS_BLOCKED, TS_TERMINATED } ThreadState;
 
-// ---------------------------------------------------------------------------
-// SimThread — a simulated user-space thread
-// ---------------------------------------------------------------------------
-struct SimThread {
+/* Replaces C++ SimThread struct. */
+typedef struct {
     int         tid;
-    std::string name;
+    char        name[64];
     int         owner_pid;
-    ThreadState state {ThreadState::READY};
+    ThreadState state;
+} SimThread;
 
-    std::string status_line() const;
-};
+const char* thread_state_str(ThreadState s);
+/* Writes formatted status line into out. */
+void        thread_status_line(const SimThread* t, char* out, int outsz);
 
-// ---------------------------------------------------------------------------
-// Scheduler — cooperative round-robin scheduler over SimThreads
-// ---------------------------------------------------------------------------
-class Scheduler {
-public:
-    int  create_thread(const std::string& name, int owner_pid);
-    void terminate_thread(int tid);
-    void block_thread(int tid, const std::string& reason = "");
-    void unblock_thread(int tid);
-    void terminate_all_for_pid(int pid);
+/* Replaces C++ Scheduler class. */
+typedef struct {
+    SimThread threads[MAX_THREADS];
+    int       count;
+    int       next_tid;
+    int       run_ptr;
+} Scheduler;
 
-    // Advance one tick: demote current RUNNING -> READY, pick next READY.
-    // Returns the newly RUNNING thread, or nullopt if nothing runnable.
-    std::optional<int> schedule();
-
-    std::optional<SimThread*> get_thread(int tid);
-    std::vector<SimThread>    list_threads() const;
-    std::vector<SimThread>    threads_for_pid(int pid) const;
-
-private:
-    std::map<int, SimThread> threads_;
-    int next_tid_ {1};
-    int run_ptr_  {0};
-};
+void  sched_init               (Scheduler* sc);
+int   sched_create_thread      (Scheduler* sc, const char* name, int owner_pid);
+int   sched_terminate_thread   (Scheduler* sc, int tid, char* eb, int esz);
+int   sched_block_thread       (Scheduler* sc, int tid, char* eb, int esz);
+int   sched_unblock_thread     (Scheduler* sc, int tid, char* eb, int esz);
+void  sched_terminate_all_for  (Scheduler* sc, int pid);
+/* Returns chosen TID, or -1 if no runnable thread. */
+int   sched_schedule           (Scheduler* sc);
+/* Returns pointer into internal array or NULL. */
+SimThread* sched_get_thread    (Scheduler* sc, int tid);
